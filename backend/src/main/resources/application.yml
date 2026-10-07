@@ -1,0 +1,20 @@
+# Configuração da aplicação (valores fixos de propósito, para ficar fácil de entender)
+server:
+  port: 8081
+
+spring:
+  application:
+    name: portal-cidadao
+
+  # Conexão com o PostgreSQL que subimos no docker-compose.yml
+  datasource:
+    url: jdbc:postgresql://localhost:5432/portal_cidadao
+    username: portal
+    password: portal123
+
+  jpa:
+    hibernate:
+      # "validate" = o Hibernate só CONFERE se as tabelas batem com o código.
+      # Quem cria e altera as tabelas é o Flyway, nunca o Hibernate.
+      ddl-auto: validate
+    show-sql: true   # mostra o SQL no console (ótimo para aprender)

@@ -1,0 +1,18 @@
+ # Sobe o banco de dados PostgreSQL para desenvolvimento.
+  services:
+    banco:
+      image: postgres:16
+      container_name: portal-banco
+      environment:
+        # Valores fixos de propósito: é um projeto fictício e local.
+        POSTGRES_DB: portal_cidadao
+        POSTGRES_USER: portal
+        POSTGRES_PASSWORD: portal123
+      ports:
+        - "5432:5432"
+      volumes:
+        # Guarda os dados mesmo se o container for apagado
+        - dados-banco:/var/lib/postgresql/data
+
+  volumes:
+    dados-banco:
