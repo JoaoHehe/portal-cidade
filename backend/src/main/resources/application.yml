@@ -18,3 +18,13 @@ spring:
       # Quem cria e altera as tabelas é o Flyway, nunca o Hibernate.
       ddl-auto: validate
     show-sql: true   # mostra o SQL no console (ótimo para aprender)
+
+# Configurações do nosso token JWT
+# (repare: "app:" fica COLADO na margem esquerda, igual ao "server:" e ao "spring:")
+app:
+  jwt:
+    # A "chave secreta" que assina os tokens. Precisa ter 32+ caracteres.
+    # Valor fixo só porque o projeto é fictício; num sistema real
+    # isso fica numa variável de ambiente, NUNCA no código.
+    segredo: troque-este-segredo-por-um-texto-bem-longo-com-mais-de-32-letras
+    horas-validade: 2
