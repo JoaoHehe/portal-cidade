@@ -44,6 +44,9 @@ public class SecurityConfig {
                         // Área da prefeitura: só funcionário ou admin
                         .requestMatchers("/api/prefeitura/**").hasAnyRole("FUNCIONARIO", "ADMIN")
 
+                        // Área do cidadão: só quem tem perfil CIDADAO
+                        .requestMatchers("/api/ocorrencias/**").hasRole("CIDADAO")
+
                         // Todo o resto: precisa estar logado (ter um token válido)
                         .anyRequest().authenticated())
 
