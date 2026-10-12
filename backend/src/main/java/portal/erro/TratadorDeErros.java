@@ -9,6 +9,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 // @RestControllerAdvice = "se qualquer controller lançar um erro, venha parar aqui".
 // Centraliza o tratamento de erros em um lugar só.
@@ -34,5 +35,13 @@ public class TratadorDeErros {
 
         ErroResponse corpo = new ErroResponse(400, "Dados inválidos", campos);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(corpo);
+    }
+
+    // Caso 3: a foto passou do limite de tamanho do application.yml
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErroResponse> tratarArquivoGrande(MaxUploadSizeExceededException ex) {
+        ErroResponse corpo = new ErroResponse(
+                413, "Arquivo muito grande (máximo de 5 MB por foto)", Map.of());
+        return ResponseEntity.status(413).body(corpo);
     }
 }
