@@ -1,5 +1,6 @@
 package portal.ocorrencia;
 
+import java.util.Comparator;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
@@ -16,9 +17,13 @@ import portal.usuario.UsuarioRepository;
 @Service
 public class OcorrenciaService {
 
+    // Duas ocorrências da mesma categoria a menos de 100 m são "possíveis duplicatas"
+    private static final double RAIO_DUPLICATA_METROS = 100;
+
     private final OcorrenciaRepository ocorrenciaRepository;
     private final HistoricoStatusRepository historicoRepository;
     private final FotoRepository fotoRepository;
+    private final ConfirmacaoRepository confirmacaoRepository;
     private final CategoriaRepository categoriaRepository;
     private final UsuarioRepository usuarioRepository;
     private final GeradorDeProtocolo geradorDeProtocolo;
@@ -26,12 +31,14 @@ public class OcorrenciaService {
     public OcorrenciaService(OcorrenciaRepository ocorrenciaRepository,
                              HistoricoStatusRepository historicoRepository,
                              FotoRepository fotoRepository,
+                             ConfirmacaoRepository confirmacaoRepository,
                              CategoriaRepository categoriaRepository,
                              UsuarioRepository usuarioRepository,
                              GeradorDeProtocolo geradorDeProtocolo) {
         this.ocorrenciaRepository = ocorrenciaRepository;
         this.historicoRepository = historicoRepository;
         this.fotoRepository = fotoRepository;
+        this.confirmacaoRepository = confirmacaoRepository;
         this.categoriaRepository = categoriaRepository;
         this.usuarioRepository = usuarioRepository;
         this.geradorDeProtocolo = geradorDeProtocolo;
@@ -55,7 +62,7 @@ public class OcorrenciaService {
         localizacao.setLongitude(dados.longitude());
         localizacao.setEndereco(dados.endereco());
         localizacao.setBairro(dados.bairro());
-        // localCritico fica false por enquanto (na Etapa 4 o sistema decide)
+        // localCritico fica false por enquanto (no Passo 23 o sistema decide)
 
         Ocorrencia ocorrencia = new Ocorrencia();
         ocorrencia.setProtocolo(geradorDeProtocolo.proximoProtocolo());
@@ -124,6 +131,87 @@ public class OcorrenciaService {
         return new OcorrenciaDetalheResponse(paraResponse(ocorrencia), fotos, historico);
     }
 
+    // Procura ocorrências abertas, da mesma categoria, num raio de 100 m
+    @Transactional(readOnly = true)
+    public List<OcorrenciaProximaResponse> buscarProximas(double latitude, double longitude,
+                                                          Long categoriaId) {
+
+        if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            throw new RegraDeNegocioException("Coordenadas inválidas");
+        }
+
+        // Converte 100 m em "graus" para montar a caixinha.
+        // 1 grau de latitude ≈ 111.000 m. Já a longitude "encolhe" conforme
+        // nos afastamos da linha do Equador, por isso o cosseno.
+        double variacaoLat = RAIO_DUPLICATA_METROS / 111_000.0;
+        double variacaoLng = RAIO_DUPLICATA_METROS
+                / (111_000.0 * Math.cos(Math.toRadians(latitude)));
+
+        // Etapa 1: o banco devolve só quem está na caixinha (RESOLVIDO fica de fora)
+        List<Ocorrencia> candidatas = ocorrenciaRepository.buscarNaCaixa(
+                categoriaId, StatusOcorrencia.RESOLVIDO,
+                latitude - variacaoLat, latitude + variacaoLat,
+                longitude - variacaoLng, longitude + variacaoLng);
+
+        // Etapa 2: calcula a distância exata, descarta quem passou de 100 m
+        // (a caixinha tem "quinas" mais longe que o raio) e ordena do mais perto ao mais longe
+        return candidatas.stream()
+                .map(o -> {
+                    double distancia = CalculadoraDeDistancia.emMetros(
+                            latitude, longitude,
+                            o.getLocalizacao().getLatitude(),
+                            o.getLocalizacao().getLongitude());
+                    return new OcorrenciaProximaResponse(
+                            o.getId(), o.getProtocolo(), o.getTitulo(), o.getStatus(),
+                            o.getLocalizacao().getLatitude(),
+                            o.getLocalizacao().getLongitude(),
+                            Math.round(distancia * 10) / 10.0,   // 1 casa decimal
+                            confirmacaoRepository.countByOcorrenciaId(o.getId()));
+                })
+                .filter(r -> r.distanciaMetros() <= RAIO_DUPLICATA_METROS)
+                .sorted(Comparator.comparingDouble(OcorrenciaProximaResponse::distanciaMetros))
+                .toList();
+    }
+
+    // O cidadão diz: "esse problema também me afeta"
+    @Transactional
+    public ConfirmacaoResponse confirmar(Long ocorrenciaId, Long usuarioId) {
+
+        Ocorrencia ocorrencia = ocorrenciaRepository.findById(ocorrenciaId)
+                .orElseThrow(() -> new RegraDeNegocioException(
+                        "Ocorrência não encontrada", HttpStatus.NOT_FOUND));
+
+        // Regra 1: não adianta confirmar o que já foi resolvido
+        if (ocorrencia.getStatus() == StatusOcorrencia.RESOLVIDO) {
+            throw new RegraDeNegocioException(
+                    "Esta ocorrência já foi resolvida e não aceita mais confirmações");
+        }
+
+        // Regra 2: quem registrou já "votou" ao registrar
+        if (ocorrencia.getCidadao().getId().equals(usuarioId)) {
+            throw new RegraDeNegocioException(
+                    "Você registrou esta ocorrência, então ela já conta com a sua voz");
+        }
+
+        // Regra 3: uma confirmação por pessoa (409 = "isso já existe")
+        if (confirmacaoRepository.existsByOcorrenciaIdAndUsuarioId(ocorrenciaId, usuarioId)) {
+            throw new RegraDeNegocioException(
+                    "Você já confirmou esta ocorrência", HttpStatus.CONFLICT);
+        }
+
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new RegraDeNegocioException(
+                        "Usuário não encontrado", HttpStatus.NOT_FOUND));
+
+        Confirmacao confirmacao = new Confirmacao();
+        confirmacao.setOcorrencia(ocorrencia);
+        confirmacao.setUsuario(usuario);
+        confirmacaoRepository.save(confirmacao);
+
+        return new ConfirmacaoResponse(
+                ocorrenciaId, confirmacaoRepository.countByOcorrenciaId(ocorrenciaId));
+    }
+
     // Converte a entidade (banco) no DTO (o que vai pro JSON)
     private OcorrenciaResponse paraResponse(Ocorrencia o) {
         return new OcorrenciaResponse(
@@ -138,6 +226,7 @@ public class OcorrenciaService {
                 o.getLocalizacao().getLongitude(),
                 o.getLocalizacao().getEndereco(),
                 o.getLocalizacao().getBairro(),
-                o.getCriadoEm());
+                o.getCriadoEm(),
+                confirmacaoRepository.countByOcorrenciaId(o.getId()));
     }
 }

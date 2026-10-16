@@ -9,10 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
 import org.springframework.web.multipart.MultipartFile;
-import portal.ocorrencia.dto.CriarOcorrenciaRequest;
-import portal.ocorrencia.dto.FotoResponse;
-import portal.ocorrencia.dto.OcorrenciaDetalheResponse;
-import portal.ocorrencia.dto.OcorrenciaResponse;
+import portal.ocorrencia.dto.*;
 
 @RestController
 @RequestMapping("/api/ocorrencias")
@@ -64,5 +61,23 @@ public class OcorrenciaController {
     private Long idDoUsuario(Jwt jwt) {
         Number id = jwt.getClaim("id");
         return id.longValue();
+    }
+
+    // GET /api/ocorrencias/proximas?latitude=..&longitude=..&categoriaId=..
+    // O app chama isso ANTES de registrar, para avisar: "já existe uma
+    // ocorrência parecida aqui perto, quer confirmar a existente?"
+    @GetMapping("/proximas")
+    public List<OcorrenciaProximaResponse> proximas(@RequestParam double latitude,
+                                                    @RequestParam double longitude,
+                                                    @RequestParam Long categoriaId) {
+        return ocorrenciaService.buscarProximas(latitude, longitude, categoriaId);
+    }
+
+    // POST /api/ocorrencias/{id}/confirmar  ->  "isso também me afeta"
+    @PostMapping("/{id}/confirmar")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ConfirmacaoResponse confirmar(@AuthenticationPrincipal Jwt jwt,
+                                         @PathVariable Long id) {
+        return ocorrenciaService.confirmar(id, idDoUsuario(jwt));
     }
 }

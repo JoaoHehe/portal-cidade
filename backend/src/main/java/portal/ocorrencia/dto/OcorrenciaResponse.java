@@ -18,6 +18,7 @@ public record OcorrenciaResponse(
         double longitude,
         String endereco,
         String bairro,
-        LocalDateTime criadoEm
+        LocalDateTime criadoEm,
+        long confirmacoes      // quantos cidadãos confirmaram (sem contar quem registrou)
 ) {
 }
